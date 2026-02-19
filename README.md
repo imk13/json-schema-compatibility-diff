@@ -1,4 +1,4 @@
-# json-schema-diff
+# Json Schema Compatibility Diff
 
 A standalone Java library for detecting differences between two JSON Schemas and determining backward compatibility. Inspired by Confluent's Schema Registry `SchemaDiff`, reimplemented with a clean typed schema model and Jackson.
 
