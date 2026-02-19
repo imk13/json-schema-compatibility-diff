@@ -62,7 +62,8 @@ class CombinedSchemaDiff {
       }
 
       int index = 0;
-      Set<Edge<SchemaWrapper, List<Difference>>> compatibleEdges = new HashSet<>();
+      Set<Edge<SchemaWrapper, List<Difference>>> sameTypeEdges = new HashSet<>();
+      Set<Edge<SchemaWrapper, List<Difference>>> crossTypeEdges = new HashSet<>();
       for (SchemaWrapper origSub : originalSubset) {
         try (Context.PathScope pathScope = ctx.enterPath(
             origCriterion.getKeyword() + "/" + index)) {
@@ -70,17 +71,35 @@ class CombinedSchemaDiff {
             final Context subctx = ctx.getSubcontext();
             SchemaDiff.compare(subctx, origSub.getSchema(), updSub.getSchema());
             if (subctx.isCompatible()) {
-              compatibleEdges.add(
-                  new Edge<>(origSub, updSub, subctx.getDifferences()));
+              Edge<SchemaWrapper, List<Difference>> edge =
+                  new Edge<>(origSub, updSub, subctx.getDifferences());
+              if (origSub.getSchema().getClass().equals(updSub.getSchema().getClass())) {
+                sameTypeEdges.add(edge);
+              } else {
+                crossTypeEdges.add(edge);
+              }
             }
           }
         }
         index++;
       }
 
-      MaximumCardinalityMatch<SchemaWrapper, List<Difference>> match =
-          new MaximumCardinalityMatch<>(compatibleEdges, originalSubset, updateSubset);
-      Set<Edge<SchemaWrapper, List<Difference>>> matching = match.getMatching();
+      // Prefer same-type matches first, then fill remaining with cross-type matches
+      MaximumCardinalityMatch<SchemaWrapper, List<Difference>> sameTypeMatch =
+          new MaximumCardinalityMatch<>(sameTypeEdges, originalSubset, updateSubset);
+      Set<Edge<SchemaWrapper, List<Difference>>> matching = sameTypeMatch.getMatching();
+
+      if (matching.size() < Math.min(originalSize, updateSize)) {
+        // Try with all edges to maximize matching
+        Set<Edge<SchemaWrapper, List<Difference>>> allEdges = new HashSet<>(sameTypeEdges);
+        allEdges.addAll(crossTypeEdges);
+        MaximumCardinalityMatch<SchemaWrapper, List<Difference>> fullMatch =
+            new MaximumCardinalityMatch<>(allEdges, originalSubset, updateSubset);
+        Set<Edge<SchemaWrapper, List<Difference>>> fullMatching = fullMatch.getMatching();
+        if (fullMatching.size() > matching.size()) {
+          matching = fullMatching;
+        }
+      }
 
       for (Edge<SchemaWrapper, List<Difference>> matchingEdge : matching) {
         ctx.addDifferences(matchingEdge.value());
